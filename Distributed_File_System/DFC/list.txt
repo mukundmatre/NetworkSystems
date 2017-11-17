@@ -1,0 +1,6 @@
+.foo4.pdf.2
+.foo4.pdf.3
+.test.txt.2
+.test.txt.3
+.video.mp4.1
+.video.mp4.2
