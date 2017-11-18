@@ -155,6 +155,8 @@ int establish_connection () {
 
 }
 
+
+
 int req_auth(char* request,char* file)
 {
   int conn_status;
@@ -412,14 +414,12 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
-      // usleep(10000);
       for (size_t j = 0; j < num_iterations; j++) {
         read_bytes = fread(buffer, 1, BUFFSIZE, file_ptr);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
-        // usleep(1000);
       }
       read_bytes = fread(buffer, 1, final_iteration, file_ptr);
       send(out_sock, buffer, read_bytes, 0);
@@ -427,7 +427,6 @@ int put_file(char *filename)
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
     }
-    // usleep(100000);
 
     if ((filesys_map[mod][i][0]==2)||(filesys_map[mod][i][1]==2)) {
       printf("---------------Part2--------------------\n");
@@ -438,14 +437,12 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
-      // usleep(1000);
       for (size_t j = 0; j < num_iterations; j++) {
         read_bytes = fread(buffer, 1, BUFFSIZE, file_ptr);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
-        // usleep(1000);
       }
       read_bytes = fread(buffer, 1, final_iteration, file_ptr);
       send(out_sock, buffer, read_bytes, 0);
@@ -453,7 +450,6 @@ int put_file(char *filename)
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
     }
-    // usleep(100000);
 
     if ((filesys_map[mod][i][0]==3)||(filesys_map[mod][i][1]==3)) {
       printf("---------------Part3--------------------\n");
@@ -464,14 +460,12 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
-      // usleep(10000);
       for (size_t j = 0; j < num_iterations; j++) {
         read_bytes = fread(buffer,  1, BUFFSIZE, file_ptr);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
-        //usleep(1000);
       }
       read_bytes = fread(buffer, 1, final_iteration, file_ptr);
       send(out_sock, buffer, read_bytes, 0);
@@ -479,7 +473,6 @@ int put_file(char *filename)
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
     }
-    //usleep(100000);
 
     if ((filesys_map[mod][i][0]==4)||(filesys_map[mod][i][1]==4)) {
       printf("---------------Part4--------------------\n");
@@ -490,14 +483,12 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
-      // usleep(10000);
       for (size_t j = 0; j < num_iterations; j++) {
         read_bytes = fread(buffer, 1, BUFFSIZE, file_ptr);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
-        // usleep(1000);
       }
       read_bytes = fread(buffer, 1, final_iteration, file_ptr);
       send(out_sock, buffer, read_bytes, 0);
@@ -505,7 +496,6 @@ int put_file(char *filename)
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
     }
-    //usleep(100000);
     bzero(buffer, sizeof(buffer));
     sprintf(buffer, "PUT Complete");
     send(out_sock, buffer, strlen(buffer), 0);
@@ -528,30 +518,36 @@ int dfs_list() {
   bzero(list_final, sizeof(list_final));
   bzero(buffer, sizeof(buffer));
   if (dfs1_status == true) {
+    send(dfc1_sock, "Send", 4, 0);
     recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0);
     fwrite(buffer, 1, recv_bytes, list_file);
     bzero(buffer, sizeof(buffer));
   }
 
   if (dfs2_status == true) {
+    send(dfc2_sock, "Send", 4, 0);
     recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0);
     fwrite(buffer, 1, recv_bytes, list_file);
     bzero(buffer, sizeof(buffer));
   }
 
   if (dfs3_status == true) {
+    send(dfc3_sock, "Send", 4, 0);
     recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0);
     fwrite(buffer, 1, recv_bytes, list_file);
     bzero(buffer, sizeof(buffer));
   }
 
   if (dfs4_status == true) {
+    send(dfc4_sock, "Send", 4, 0);
     recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0);
     fwrite(buffer, 1, recv_bytes, list_file);
     bzero(buffer, sizeof(buffer));
   }
   fclose(list_file);
+  usleep(100000);
   system("sort -u -o list.txt list.txt");
+  usleep(100000);
   list_file = fopen("list.txt", "r");
   getline(&line, &length, list_file);
   strncpy(fname, (line+1), strlen(line)-4);
@@ -573,9 +569,22 @@ int dfs_list() {
       part_count = 1;
     }
   }
+  if (part_count == 4) {
+    strcat(list_final, fname);
+    strcat(list_final, "\n");
+  }
+  else {
+    strcat(list_final, fname);
+    strcat(list_final, "[Incomplete]\n");
+  }
+  fclose(list_file);
+  printf("list_final:\n%s \n", list_final);
+  fflush(stdout);
   remove("list.txt");
   return 0;
 }
+
+
 
 //Advanced GET
 int get_file(char* file_name) {
@@ -610,6 +619,9 @@ int get_file(char* file_name) {
 
   return 0;
 }
+
+
+
 
 int main(int argc, char *argv[])
 {

@@ -144,6 +144,7 @@ int put_fparts (char* user, char* server_root, int comm_socket) {
 int list_files(char* user_name, char* server_root, int comm_socket) {
   DIR *dir;
   struct dirent *ent;
+  char buffer[10];
   char file_list[100] = "\0";
   char dir_path[20];
   sprintf(dir_path, ".%s/%s",server_root, user_name);
@@ -158,11 +159,13 @@ int list_files(char* user_name, char* server_root, int comm_socket) {
   }
   printf("%s\n", file_list);
   closedir (dir);
+  recv(comm_socket, buffer, sizeof(buffer), 0);
   send(comm_socket, file_list, strlen(file_list), 0);
+  bzero(buffer, sizeof(buffer));
   } else {
   /* could not open directory */
   perror ("");
-  return EXIT_FAILURE;
+  return 1;
   }
   return 0;
 }
