@@ -26,7 +26,6 @@ int get_fparts(char* username, char* server_root, int conn_sock);
 int list_files(char* user_name, char* server_root, int comm_socket);
 int create_dir(char* username, char* server_root, int conn_sock);
 
-
 int authenticate_user(char* username, char* password)
 {
   if ((strcmp(username, "") == 0) || (strcmp(password, "") == 0)) {
@@ -244,9 +243,15 @@ int create_dir(char* username, char* server_root, int conn_sock) {
   return 0;
 }
 
+
+
+
+
 int main(int argc, char *argv[])
 {
+  int pid;
   struct sockaddr_in dfs_add;
+  struct sockaddr_in dfc_add;
   char buffer[BUFFSIZE];
   unsigned int len;
   int recv_bytes;
@@ -292,68 +297,74 @@ int main(int argc, char *argv[])
 
 /* wait for connection, then receive and print text */
   while(1) {
-    if ((conn_sock = accept(dfs_sock, (struct sockaddr *)&dfs_add, &len)) < 0) {
+    len = sizeof(dfc_add);
+    if ((conn_sock = accept(dfs_sock, (struct sockaddr *)&dfc_add, &len)) < 0) {
       perror("\naccept error on dfs");
-      exit(1);
+      continue;
     }
 
+    printf("Request for Connection from Client at port:%d\n", ntohs(dfc_add.sin_port));
 
-    while (1) {
-      bzero(request_type, sizeof(request_type));
-      bzero(username, sizeof(username));
-      bzero(password, sizeof(password));
-      bzero(buffer, sizeof(buffer));
-      recv_bytes = recv(conn_sock, buffer, sizeof(buffer), 0);
-      if (recv_bytes == 0) {
-        printf("Client Disconnected\n");
-        break;
-      }
-      printf("\n-----%s-----\n", buffer);
-      sscanf(buffer, "%s %s %s %s", request_type, filename, username, password);
-      bzero(buffer, sizeof(buffer));
-      printf("User:%s Pass:%s\n", username, password);
-      auth = authenticate_user(username, password);
-      if (auth == 0)
-      {
-        printf("User Authenticated\n");
+    pid = fork();
+
+    if (pid == 0) {
+      while (1) {
+        bzero(request_type, sizeof(request_type));
+        bzero(username, sizeof(username));
+        bzero(password, sizeof(password));
         bzero(buffer, sizeof(buffer));
-        sprintf(buffer, "Authentication Success");
-        send(conn_sock, buffer, strlen(buffer), 0);
-        if (strcmp(request_type, "PUT") == 0) {
-          printf("PUT detected\n");
-          put_fparts(username, server_root, conn_sock);
+        recv_bytes = recv(conn_sock, buffer, sizeof(buffer), 0);
+        if (recv_bytes == 0) {
+          printf("Client Disconnected\n");
+          exit(0);
         }
-        else if (strcmp(request_type, "GET") == 0) {
-          printf("GET detected\n");
-          get_fparts(username, server_root, conn_sock);
+        printf("\n-----%s-----\n", buffer);
+        sscanf(buffer, "%s %s %s %s", request_type, filename, username, password);
+        bzero(buffer, sizeof(buffer));
+        printf("User:%s Pass:%s\n", username, password);
+        auth = authenticate_user(username, password);
+        if (auth == 0)
+        {
+          printf("User Authenticated\n");
+          bzero(buffer, sizeof(buffer));
+          sprintf(buffer, "Authentication Success");
+          send(conn_sock, buffer, strlen(buffer), 0);
+          if (strcmp(request_type, "PUT") == 0) {
+            printf("PUT detected\n");
+            put_fparts(username, server_root, conn_sock);
+          }
+          else if (strcmp(request_type, "GET") == 0) {
+            printf("GET detected\n");
+            get_fparts(username, server_root, conn_sock);
+          }
+          else if (strcmp(request_type, "LIST") == 0) {
+            printf("LIST detected\n");
+            list_files(username, server_root, conn_sock);
+          }
+          else if (strcmp(request_type, "MKDIR") == 0) {
+            printf("MKDIR detected\n");
+            create_dir(username, server_root, conn_sock);
+          }
+          else {
+            printf("Invalid Command\n");
+          }
         }
-        else if (strcmp(request_type, "LIST") == 0) {
-          printf("LIST detected\n");
-          list_files(username, server_root, conn_sock);
+        else if (auth == 1)
+        {
+          printf("User not found\n");
+          sprintf(buffer, "Authentication Failure");
+          send(conn_sock, buffer, sizeof(buffer), 0);
+          close(conn_sock);
+          exit(1);
         }
-        else if (strcmp(request_type, "MKDIR") == 0) {
-          printf("MKDIR detected\n");
-          create_dir(username, server_root, conn_sock);
+        else
+        {
+          printf("Config file parsing failed\n");
+          sprintf(buffer, "Configuration Failure");
+          send(conn_sock, buffer, sizeof(buffer), 0);
+          close(conn_sock);
+          exit(1);
         }
-        else {
-          printf("Invalid Command\n");
-        }
-      }
-      else if (auth == 1)
-      {
-        printf("User not found\n");
-        sprintf(buffer, "Authentication Failure");
-        send(conn_sock, buffer, sizeof(buffer), 0);
-        close(conn_sock);
-        exit(1);
-      }
-      else
-      {
-        printf("Config file parsing failed\n");
-        sprintf(buffer, "Configuration Failure");
-        send(conn_sock, buffer, sizeof(buffer), 0);
-        close(conn_sock);
-        exit(1);
       }
     }
 
