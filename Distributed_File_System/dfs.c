@@ -24,6 +24,8 @@ int authenticate_user(char* username, char* password);
 int put_fparts(char* user, char* server_root, int comm_socket);
 int get_fparts(char* username, char* server_root, int conn_sock);
 int list_files(char* user_name, char* server_root, int comm_socket);
+int create_dir(char* username, char* server_root, int conn_sock);
+
 
 int authenticate_user(char* username, char* password)
 {
@@ -69,6 +71,7 @@ int put_fparts (char* user, char* server_root, int comm_socket) {
   unsigned int num_iterations;
   unsigned long int final_iteration;
   char in_buffer[BUFFSIZE];
+  bzero(in_buffer, sizeof(in_buffer));
   int recv_bytes;
   char file_path[50];
   char dir_path[20];
@@ -156,6 +159,9 @@ int list_files(char* user_name, char* server_root, int comm_socket) {
     if ((strcmp(ent->d_name, ".") == 0) || (strcmp(ent->d_name, "..") == 0) ) {
       continue;
     }
+    if (ent->d_name[0] != '.') {
+      continue;
+    }
     strcat(file_list, ent->d_name);
     strcat(file_list, "\n");
   }
@@ -223,7 +229,20 @@ int get_fparts(char* username, char* server_root, int conn_sock) {
   return 0;
 }
 
-
+int create_dir(char* username, char* server_root, int conn_sock) {
+  char buffer[40];
+  char subfolder[20];
+  char dir_path[40];
+  bzero(buffer, sizeof(buffer));
+  bzero(dir_path, sizeof(dir_path));
+  bzero(subfolder, sizeof(subfolder));
+  recv(conn_sock ,buffer, sizeof(buffer), 0);
+  send(conn_sock, "ACK", 3, 0);
+  sscanf(buffer, "%*s %s", subfolder);
+  sprintf(dir_path, ".%s/%s/%s",server_root, username, subfolder);
+  mkdir(dir_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  return 0;
+}
 
 int main(int argc, char *argv[])
 {
@@ -311,6 +330,10 @@ int main(int argc, char *argv[])
         else if (strcmp(request_type, "LIST") == 0) {
           printf("LIST detected\n");
           list_files(username, server_root, conn_sock);
+        }
+        else if (strcmp(request_type, "MKDIR") == 0) {
+          printf("MKDIR detected\n");
+          create_dir(username, server_root, conn_sock);
         }
         else {
           printf("Invalid Command\n");

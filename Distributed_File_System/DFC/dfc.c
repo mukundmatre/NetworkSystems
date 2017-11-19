@@ -48,12 +48,15 @@ int filesys_map [NUM_MODULUS] [NUM_SERVERS] [NUM_FPART] = {
                                                           ,{{3,4},{4,1},{1,2},{2,3}}
                                                           ,{{2,3},{3,4},{4,1},{1,2}}
                                                           };
+
+
 int parse_dfc_conf(char* conf_name);
 int req_auth(char* request, char* file);
 int calculate_md5sum(FILE *file_ptr, char *md5_string);
 int put_file(char *file);
 int dfs_list();
 int get_file(char* file_name);
+int make_dir(char* directory_name);
 
 int parse_dfc_conf(char* conf_name)
 {
@@ -1090,6 +1093,42 @@ int get_file(char* file_name) {
 }
 
 
+int make_dir(char* directory_name) {
+  char buffer[40];
+  bzero(buffer, sizeof(buffer));
+
+  if (dfs1_status == true) {
+    sprintf(buffer, "Make %s", directory_name);
+    send(dfc1_sock, buffer, strlen(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    recv(dfc1_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+  }
+  if (dfs2_status == true) {
+    sprintf(buffer, "Make %s", directory_name);
+    send(dfc2_sock, buffer, strlen(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    recv(dfc2_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+  }
+  if (dfs3_status == true) {
+    sprintf(buffer, "Make %s", directory_name);
+    send(dfc3_sock, buffer, strlen(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    recv(dfc3_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+
+  }
+  if (dfs4_status == true) {
+    sprintf(buffer, "Make %s", directory_name);
+    send(dfc4_sock, buffer, strlen(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    recv(dfc4_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+  }
+
+  return 0;
+}
 
 
 int main(int argc, char *argv[])
@@ -1099,6 +1138,7 @@ int main(int argc, char *argv[])
   char buffer[BUFFSIZE];
   char request_type[5];
   char file_name[40] = "all";
+  char subfolder[40] = "";
 
   if (argc!=2)
   {
@@ -1178,6 +1218,11 @@ int main(int argc, char *argv[])
       else if (strcmp(request_type, "LIST") == 0) {
         printf("Listing files on servers\n");
         dfs_list();
+      }
+      else if (strcmp(request_type, "MKDIR") == 0) {
+        sscanf(buffer, "%*s %s", subfolder);
+        printf("Creating directory\n");
+        make_dir(subfolder);
       }
 
       else {
