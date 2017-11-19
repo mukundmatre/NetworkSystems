@@ -335,7 +335,9 @@ int put_file(char *filename)
   unsigned long int part_size;
   unsigned long int last_part;
   unsigned long int final_iteration;
+  unsigned long int last_final_iteration;
   unsigned int num_iterations;
+  unsigned int last_num_iterations;
 
   //open file
   FILE *file_ptr;
@@ -354,6 +356,8 @@ int put_file(char *filename)
   part_size = (file_size/4);
   printf("Part Size:%lu\n", part_size);
   last_part = (part_size + (file_size%4));
+  last_num_iterations = last_part/BUFFSIZE;
+  last_final_iteration = last_part%BUFFSIZE;
   num_iterations = part_size/BUFFSIZE;
   printf("Num Iterations:%d\n", num_iterations);
   final_iteration = part_size%BUFFSIZE;
@@ -483,14 +487,14 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
       bzero(buffer, sizeof(buffer));
-      for (size_t j = 0; j < num_iterations; j++) {
+      for (size_t j = 0; j < last_num_iterations; j++) {
         read_bytes = fread(buffer, 1, BUFFSIZE, file_ptr);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
       }
-      read_bytes = fread(buffer, 1, final_iteration, file_ptr);
+      read_bytes = fread(buffer, 1, last_final_iteration, file_ptr);
       send(out_sock, buffer, read_bytes, 0);
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
@@ -588,33 +592,498 @@ int dfs_list() {
 
 //Advanced GET
 int get_file(char* file_name) {
+  FILE *file_ptr;
+  char sys_command[100];
+  char buffer[BUFFSIZE];
+  FILE *p1_ptr;
+  FILE *p2_ptr;
+  FILE *p3_ptr;
+  FILE *p4_ptr;
+  if ((file_ptr = fopen(file_name, "r")) != NULL) {
+    printf("File already Exists\n");
+    bzero(buffer, sizeof(buffer));
+    send(dfc1_sock, "Done dfs1", 4, 0);
+    recv(dfc1_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    send(dfc2_sock, "Done dfs2", 4, 0);
+    recv(dfc2_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    send(dfc3_sock, "Done dfs3", 4, 0);
+    recv(dfc3_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    send(dfc4_sock, "Done dfs4", 4, 0);
+    recv(dfc4_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    fclose(file_ptr);
+    return 1;
+  }
+  int recv_bytes;
   char p1_name[20];
   char p2_name[20];
   char p3_name[20];
   char p4_name[20];
+  bool p1_exist = false;
+  bool p2_exist = false;
+  bool p3_exist = false;
+  bool p4_exist = false;
   sprintf(p1_name, ".%s.1", file_name);
   sprintf(p2_name, ".%s.2", file_name);
   sprintf(p3_name, ".%s.3", file_name);
   sprintf(p4_name, ".%s.4", file_name);
+
+  if ((file_ptr = fopen(p1_name, "r")) != NULL) {
+      p1_exist = true;
+      fclose(file_ptr);
+  }
+  if ((file_ptr = fopen(p2_name, "r")) != NULL) {
+      p2_exist = true;
+      fclose(file_ptr);
+  }
+  if ((file_ptr = fopen(p3_name, "r")) != NULL) {
+      p3_exist = true;
+      fclose(file_ptr);
+  }
+  if ((file_ptr = fopen(p4_name, "r")) != NULL) {
+      p4_exist = true;
+      fclose(file_ptr);
+  }
+
+  if (p1_exist && p2_exist && p3_exist && p4_exist) {
+    bzero(buffer, sizeof(buffer));
+    send(dfc1_sock, "Done dfs1", 4, 0);
+    recv(dfc1_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    send(dfc2_sock, "Done dfs2", 4, 0);
+    recv(dfc2_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    send(dfc3_sock, "Done dfs3", 4, 0);
+    recv(dfc3_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    send(dfc4_sock, "Done dfs4", 4, 0);
+    recv(dfc4_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+    goto combine_parts;
+  }
+
+
   char dfs1_list[BUFFSIZE];
   char dfs2_list[BUFFSIZE];
   char dfs3_list[BUFFSIZE];
   char dfs4_list[BUFFSIZE];
+  bzero(dfs1_list, sizeof(dfs1_list));
+  bzero(dfs2_list, sizeof(dfs2_list));
+  bzero(dfs3_list, sizeof(dfs3_list));
+  bzero(dfs4_list, sizeof(dfs4_list));
+
   if (dfs1_status == true) {
+    send(dfc1_sock, "Send", 4, 0);
     recv(dfc1_sock, dfs1_list, sizeof(dfs1_list), 0);
 
+
+    if (!p1_exist) {
+      if (strstr(dfs1_list, p1_name)) {
+        p1_ptr = fopen(p1_name, "a");
+        if (p1_ptr == NULL) {
+          printf("Error opening file\n");
+        }
+        sprintf(buffer, "GET %s", p1_name);
+        send(dfc1_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc1_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          printf("Buffer:%s\n", buffer);
+          fwrite(buffer, 1, recv_bytes, p1_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc1_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p1_ptr);
+        printf("Got Part1\n");
+        p1_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+
+    if (!p2_exist) {
+      if (strstr(dfs1_list, p2_name)) {
+        p2_ptr = fopen(p2_name, "a");
+        sprintf(buffer, "GET %s", p2_name);
+        send(dfc1_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc1_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          printf("Buffer:%s\n", buffer);
+          fwrite(buffer, 1, recv_bytes, p2_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc1_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p2_ptr);
+        printf("Got Part2\n");
+        p2_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p3_exist) {
+      if (strstr(dfs1_list, p3_name)) {
+        p3_ptr = fopen(p3_name, "a");
+        sprintf(buffer, "GET %s", p3_name);
+        send(dfc1_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc1_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p3_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc1_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p3_ptr);
+        printf("Got Part3\n");
+        p3_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p4_exist) {
+      if (strstr(dfs1_list, p4_name)) {
+        p4_ptr = fopen(p4_name, "a");
+        sprintf(buffer, "GET %s", p4_name);
+        send(dfc1_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc1_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p4_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc1_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p4_ptr);
+        printf("Got Part4\n");
+        p4_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    send(dfc1_sock, "Done dfs1", 4, 0);
+    recv(dfc1_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
   }
+
+
 
   if (dfs2_status == true) {
+    send(dfc2_sock, "Send", 4, 0);
     recv(dfc2_sock, dfs2_list, sizeof(dfs2_list), 0);
+
+
+    if (!p1_exist) {
+      if (strstr(dfs2_list, p1_name)) {
+        p1_ptr = fopen(p1_name, "a");
+        sprintf(buffer, "GET %s", p1_name);
+        send(dfc2_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc2_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p1_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc2_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p1_ptr);
+        printf("Got Part1\n");
+        p1_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p2_exist) {
+      if (strstr(dfs2_list, p2_name)) {
+        p2_ptr = fopen(p2_name, "a");
+        sprintf(buffer, "GET %s", p2_name);
+        send(dfc2_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc2_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p2_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc2_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p2_ptr);
+        printf("Got Part2\n");
+        p2_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p3_exist) {
+      if (strstr(dfs2_list, p3_name)) {
+        p3_ptr = fopen(p3_name, "a");
+        sprintf(buffer, "GET %s", p3_name);
+        send(dfc2_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc2_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p3_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc2_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p3_ptr);
+        printf("Got Part3\n");
+        p3_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p4_exist) {
+      if (strstr(dfs2_list, p4_name)) {
+        p4_ptr = fopen(p4_name, "a");
+        sprintf(buffer, "GET %s", p4_name);
+        send(dfc2_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc2_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p4_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc2_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p4_ptr);
+        printf("Got Part4\n");
+        p4_exist = true;
+      }
+    }
+    send(dfc2_sock, "Done dfs2", 4, 0);
+    recv(dfc2_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
   }
+
+
 
   if (dfs3_status == true) {
+    send(dfc3_sock, "Send", 4, 0);
     recv(dfc3_sock, dfs3_list, sizeof(dfs3_list), 0);
+    if (!p1_exist) {
+      if (strstr(dfs3_list, p1_name)) {
+        p1_ptr = fopen(p1_name, "a");
+        sprintf(buffer, "GET %s", p1_name);
+        send(dfc3_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc3_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p1_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc3_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p1_ptr);
+        printf("Got Part1\n");
+        p1_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p2_exist) {
+      if (strstr(dfs3_list, p2_name)) {
+        p2_ptr = fopen(p2_name, "a");
+        sprintf(buffer, "GET %s", p2_name);
+        send(dfc3_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc3_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p2_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc3_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p2_ptr);
+        printf("Got Part2\n");
+        p2_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p3_exist) {
+      if (strstr(dfs3_list, p3_name)) {
+        p3_ptr = fopen(p3_name, "a");
+        sprintf(buffer, "GET %s", p3_name);
+        send(dfc3_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc3_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p3_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc3_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p3_ptr);
+        printf("Got Part3\n");
+        p3_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p4_exist) {
+      if (strstr(dfs3_list, p4_name)) {
+        p4_ptr = fopen(p4_name, "a");
+        sprintf(buffer, "GET %s", p4_name);
+        send(dfc3_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc3_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p4_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc3_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p4_ptr);
+        printf("Got Part4\n");
+        p4_exist = true;
+      }
+    }
+    send(dfc3_sock, "Done dfs3", 4, 0);
+    recv(dfc3_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
   }
 
+
+
+
   if (dfs4_status == true) {
+    send(dfc4_sock, "Send", 4, 0);
     recv(dfc4_sock, dfs4_list, sizeof(dfs4_list), 0);
+    if (!p1_exist) {
+      if (strstr(dfs4_list, p1_name)) {
+        p1_ptr = fopen(p1_name, "a");
+        sprintf(buffer, "GET %s", p1_name);
+        send(dfc4_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc4_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p1_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc4_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p1_ptr);
+        printf("Got Part1\n");
+        p1_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p2_exist) {
+      if (strstr(dfs4_list, p2_name)) {
+        p2_ptr = fopen(p2_name, "a");
+        sprintf(buffer, "GET %s", p2_name);
+        send(dfc4_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc4_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p2_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc4_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p2_ptr);
+        printf("Got Part2\n");
+        p2_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p3_exist) {
+      if (strstr(dfs4_list, p3_name)) {
+        p3_ptr = fopen(p3_name, "a");
+        sprintf(buffer, "GET %s", p3_name);
+        send(dfc4_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc4_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p3_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc4_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p3_ptr);
+        printf("Got Part3\n");
+        p3_exist = true;
+      }
+    }
+    bzero(buffer, sizeof(buffer));
+    if (!p4_exist) {
+      if (strstr(dfs4_list, p4_name)) {
+        p4_ptr = fopen(p4_name, "a");
+        sprintf(buffer, "GET %s", p4_name);
+        send(dfc4_sock, buffer, strlen(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        recv(dfc4_sock, buffer, sizeof(buffer), 0);
+        bzero(buffer, sizeof(buffer));
+        while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          fwrite(buffer, 1, recv_bytes, p4_ptr);
+          bzero(buffer, sizeof(buffer));
+          send(dfc4_sock, "ACK", 3, 0);
+          if (recv_bytes < BUFFSIZE) {
+            break;
+          }
+        }
+        fclose(p4_ptr);
+        printf("Got Part4\n");
+        p4_exist = true;
+      }
+    }
+    send(dfc4_sock, "Done dfs4", 4, 0);
+    recv(dfc4_sock, buffer, sizeof(buffer), 0);
+    bzero(buffer, sizeof(buffer));
+  }
+
+  combine_parts:
+  bzero(sys_command ,sizeof(sys_command));
+
+  if (p1_exist && p2_exist && p3_exist && p4_exist) {
+    printf("Combining Parts\n");
+    sprintf(sys_command, "cat %s %s %s %s > %s", p1_name, p2_name, p3_name, p4_name, file_name);
+    system(sys_command);
+    printf("GET %s[Complete] Successful\n", file_name);
+  }
+  else {
+    printf("GET %s[Incomplete] Successful\n", file_name);
   }
 
   return 0;
@@ -687,7 +1156,7 @@ int main(int argc, char *argv[])
   }
 
 
-  printf("Distributed File System\nUsage:\nPUT <filename>\nGET <filename>\nLIST\n");
+  printf("\n\nDistributed File System\nUsage:\nPUT <filename>\nGET <filename>\nLIST\n\nEnter Command:");
   while (scanf("%30[^\n]%*c", buffer))
   {
     sscanf(buffer, "%s %*s", request_type);
@@ -697,11 +1166,13 @@ int main(int argc, char *argv[])
       if ((strcmp(request_type, "PUT") == 0)) {
         sscanf(buffer, "%*s %s", file_name);
         printf("File :%s\n", file_name);
+        put_file(file_name);
       }
 
       else if (strcmp(request_type, "GET") == 0) {
         sscanf(buffer, "%*s %s", file_name);
         printf("GET command\n");
+        get_file(file_name);
       }
 
       else if (strcmp(request_type, "LIST") == 0) {
@@ -721,5 +1192,6 @@ int main(int argc, char *argv[])
     bzero(file_name, sizeof(file_name));
     strcpy(file_name, "all");
     bzero(request_type, sizeof(request_type));
+    printf("\n\nDistributed File System\nUsage:\nPUT <filename>\nGET <filename>\nLIST\n\nEnter Command:");
   }
 }

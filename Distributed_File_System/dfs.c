@@ -22,6 +22,7 @@ Author: Mukund Madhusudan Atre*/
 
 int authenticate_user(char* username, char* password);
 int put_fparts(char* user, char* server_root, int comm_socket);
+int get_fparts(char* username, char* server_root, int conn_sock);
 int list_files(char* user_name, char* server_root, int comm_socket);
 
 int authenticate_user(char* username, char* password)
@@ -145,7 +146,8 @@ int list_files(char* user_name, char* server_root, int comm_socket) {
   DIR *dir;
   struct dirent *ent;
   char buffer[10];
-  char file_list[100] = "\0";
+  char file_list[100];
+  bzero(file_list, sizeof(file_list));
   char dir_path[20];
   sprintf(dir_path, ".%s/%s",server_root, user_name);
   if ((dir = opendir (dir_path)) != NULL) {
@@ -157,9 +159,13 @@ int list_files(char* user_name, char* server_root, int comm_socket) {
     strcat(file_list, ent->d_name);
     strcat(file_list, "\n");
   }
-  printf("%s\n", file_list);
   closedir (dir);
+  bzero(buffer, sizeof(buffer));
   recv(comm_socket, buffer, sizeof(buffer), 0);
+  if (strstr(buffer, "Done")) {
+    send(comm_socket, "ACK", 3, 0);
+    return 2;
+  }
   send(comm_socket, file_list, strlen(file_list), 0);
   bzero(buffer, sizeof(buffer));
   } else {
@@ -170,6 +176,52 @@ int list_files(char* user_name, char* server_root, int comm_socket) {
   return 0;
 }
 
+
+int get_fparts(char* username, char* server_root, int conn_sock) {
+  FILE *file_ptr;
+  char buffer[BUFFSIZE];
+  char request[5];
+  char file_name[30];
+  char file_path[100];
+  size_t read_bytes;
+  int iter = 0;
+  int list_ret;
+
+  list_ret = list_files(username, server_root, conn_sock);
+  if (list_ret == 2) {
+    return 2;
+  }
+
+  while(iter<3) {
+    bzero(file_name, sizeof(file_name));
+    bzero(file_path, sizeof(file_path));
+    bzero(request, sizeof(request));
+    recv(conn_sock, buffer, sizeof(buffer), 0);
+    printf("GET file name:%s\n", buffer);
+    if (strstr(buffer, "Done")) {
+      send(conn_sock, "ACK", 3, 0);
+      break;
+    }
+    sscanf(buffer, "%s %s", request, file_name);
+    printf("Filename:%s\n", file_name);
+    sprintf(file_path, ".%s/%s/%s", server_root, username, file_name);
+    file_ptr = fopen(file_path, "r");
+    if (file_ptr == NULL) {
+      printf("Cannot open file\n");
+      exit(1);
+    }
+    send(conn_sock, "ACK", 3, 0);
+    bzero(buffer, sizeof(buffer));
+    while ((read_bytes = fread(buffer, 1, sizeof(buffer), file_ptr)) > 0) {
+      send(conn_sock, buffer, read_bytes, 0);
+      bzero(buffer, sizeof(buffer));
+      recv(conn_sock, buffer, sizeof(buffer), 0);
+      bzero(buffer, sizeof(buffer));
+    }
+    iter++;
+  }
+  return 0;
+}
 
 
 
@@ -237,7 +289,7 @@ int main(int argc, char *argv[])
         printf("Client Disconnected\n");
         break;
       }
-      printf("-----%s-----\n", buffer);
+      printf("\n-----%s-----\n", buffer);
       sscanf(buffer, "%s %s %s %s", request_type, filename, username, password);
       bzero(buffer, sizeof(buffer));
       printf("User:%s Pass:%s\n", username, password);
@@ -254,6 +306,7 @@ int main(int argc, char *argv[])
         }
         else if (strcmp(request_type, "GET") == 0) {
           printf("GET detected\n");
+          get_fparts(username, server_root, conn_sock);
         }
         else if (strcmp(request_type, "LIST") == 0) {
           printf("LIST detected\n");
