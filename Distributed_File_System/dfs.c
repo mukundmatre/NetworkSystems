@@ -1,4 +1,4 @@
-/*Distributed File System Server
+/*Distributed File System -- Server
 Author: Mukund Madhusudan Atre*/
 
 #include <stdio.h>
@@ -16,18 +16,19 @@ Author: Mukund Madhusudan Atre*/
 #include <unistd.h>
 #include <sys/stat.h>
 
+// Necessary defines
 #define SERVER_PORT 5575
 #define MAX_PENDING 5
 #define BUFFSIZE 256
 
+// Function Declarations
 int authenticate_user(char* username, char* password);
 int put_fparts (char* user, char* server_root, char* sub_folder, int comm_socket);
 int get_fparts(char* username, char* server_root, char* sub_folder, int conn_sock);
 int list_files(char* user_name, char* server_root, char* sub_folder, int comm_socket);
 int create_dir(char* username, char* server_root, int conn_sock);
 
-
-
+// User Authentication
 int authenticate_user(char* username, char* password)
 {
   if ((strcmp(username, "") == 0) || (strcmp(password, "") == 0)) {
@@ -64,7 +65,7 @@ int authenticate_user(char* username, char* password)
 }
 
 
-
+//  Put file parts received from client into specified directory
 int put_fparts (char* user, char* server_root, char* sub_folder, int comm_socket) {
   FILE *file_ptr;
   FILE *file_ptr1;
@@ -138,7 +139,7 @@ int put_fparts (char* user, char* server_root, char* sub_folder, int comm_socket
   fwrite(in_buffer, 1, recv_bytes, file_ptr1);
   send(comm_socket, "ACK", 3, 0);
   fclose(file_ptr1);
-
+//  Error Handling
   bzero(in_buffer, sizeof(in_buffer));
   recv_bytes = recv(comm_socket, in_buffer, sizeof(in_buffer), 0);
   if (strcmp(in_buffer, "PUT Complete")==0) {
@@ -152,7 +153,7 @@ int put_fparts (char* user, char* server_root, char* sub_folder, int comm_socket
 }
 
 
-
+// Send list of files to client
 int list_files(char* user_name, char* server_root, char* sub_folder, int comm_socket) {
   DIR *dir;
   struct dirent *ent;
@@ -170,12 +171,12 @@ int list_files(char* user_name, char* server_root, char* sub_folder, int comm_so
   if ((dir = opendir (dir_path)) != NULL) {
   /* print all the files and directories within directory */
     while ((ent = readdir (dir)) != NULL) {
-      if ((strcmp(ent->d_name, ".") == 0) || (strcmp(ent->d_name, "..") == 0) ) {
+      if ((strcmp(ent->d_name, ".") == 0) || (strcmp(ent->d_name, "..") == 0) || (ent->d_name[0] != '.') ) {
         continue;
       }
-      if (ent->d_name[0] != '.') {
-        continue;
-      }
+      // if (ent->d_name[0] != '.') {
+      //   continue;
+      // }
       strcat(file_list, ent->d_name);
       strcat(file_list, "\n");
     }
@@ -217,7 +218,7 @@ int list_files(char* user_name, char* server_root, char* sub_folder, int comm_so
 }
 
 
-
+// Send requested file parts to client
 int get_fparts(char* username, char* server_root, char* sub_folder, int conn_sock) {
   FILE *file_ptr;
   char buffer[BUFFSIZE];
@@ -270,7 +271,7 @@ int get_fparts(char* username, char* server_root, char* sub_folder, int conn_soc
 }
 
 
-
+// Create directory requested by client
 int create_dir(char* username, char* server_root, int conn_sock) {
   char buffer[40];
   char subfolder[20];
@@ -347,7 +348,7 @@ int main(int argc, char *argv[])
     }
 
     printf("\nRequest for Connection from Client at port:%d\n", ntohs(dfc_add.sin_port));
-
+// Fork for handling multiple connections
     pid = fork();
 
     if (pid == 0) {

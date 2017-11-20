@@ -18,11 +18,13 @@ Author: Mukund Madhusudan Atre
 #include <arpa/inet.h>
 #include <openssl/md5.h>
 
+// Necessary defines for client Configuration
 #define BUFFSIZE 256
 #define NUM_MODULUS 4
 #define NUM_SERVERS 4
 #define NUM_FPART 2
 
+// Structure for storing config parameters
 typedef struct
 {
   char dfs1_ip[40];
@@ -37,14 +39,15 @@ typedef struct
   int dfs4_port;
 }dfc_t;
 
+//Status Flags for servers
 dfc_t conf;
 int dfc1_sock, dfc2_sock, dfc3_sock, dfc4_sock;
 struct sockaddr_in dfs1_add, dfs2_add, dfs3_add, dfs4_add;
 bool dfs1_status, dfs2_status, dfs3_status, dfs4_status;
-bool dfs1_empty, dfs2_empty, dfs3_empty, dfs4_empty;
 struct timeval tv;
 fd_set myset;
 
+//Mapping of file parts to be put on DFS
 int filesys_map [NUM_MODULUS] [NUM_SERVERS] [NUM_FPART] = {
                                                            {{1,2},{2,3},{3,4},{4,1}}
                                                           ,{{4,1},{1,2},{2,3},{3,4}}
@@ -52,7 +55,7 @@ int filesys_map [NUM_MODULUS] [NUM_SERVERS] [NUM_FPART] = {
                                                           ,{{2,3},{3,4},{4,1},{1,2}}
                                                           };
 
-
+// Function definitions
 int parse_dfc_conf(char* conf_name);
 int req_auth(char* request, char* file, char* folder);
 int establish_connection ();
@@ -63,7 +66,9 @@ int get_file(char* file_name);
 int make_dir(char* directory_name);
 void set_non_blocking(int socket);
 void set_blocking(int socket);
+void xor_encrypt_data(char* data);
 
+// Function for parsing client config file
 int parse_dfc_conf(char* conf_name)
 {
   FILE *conf_ptr;
@@ -109,6 +114,16 @@ int parse_dfc_conf(char* conf_name)
   }
 }
 
+// Password based XOR encryption
+void xor_encrypt_data(char* data) {
+  unsigned int i = 0;
+  unsigned int key_length = strlen(conf.password);
+  for (i = 0; i < strlen(data); i++) {
+       data[i] ^= conf.password[(i%(key_length))];
+  }
+}
+
+// Function for setting socket to non-blocking
 void set_non_blocking(int socket) {
   long arg;
   arg = fcntl(socket, F_GETFL, NULL);
@@ -116,6 +131,7 @@ void set_non_blocking(int socket) {
   fcntl(socket, F_SETFL, arg);
 }
 
+// Function for setting socket to blocking
 void set_blocking(int socket) {
   long arg;
   arg = fcntl(socket, F_GETFL, NULL);
@@ -123,30 +139,15 @@ void set_blocking(int socket) {
   fcntl(socket, F_SETFL, arg);
 }
 
+
+// Function for establishing connection to servers
 int establish_connection () {
-  // socklen_t lon;
-  // int valopt;
   /*Establish connection to servers*/
     printf("Connecting to servers...\n");
-    //set_non_blocking(dfc1_sock);
+
     if (connect(dfc1_sock, (struct sockaddr *)&dfs1_add, sizeof(dfs1_add)) < 0 && errno!=EISCONN)
     {
-      // if (errno != EINPROGRESS) {
-      //   printf("I was here\n");
-        // tv.tv_sec = 15;
-        // tv.tv_usec = 0;
-        // FD_ZERO(&myset);
-        // FD_SET(dfc1_sock, &myset);
-        // if (select(dfc1_sock+1, NULL, &myset, NULL, &tv) > 0) {
-        //   perror("\n");
-        //   dfs1_status = false;
-        // }
-      //   else {
-      //     perror("\nunable to connect to dfs1");
-      //     dfs1_status = false;
-      //   }
-      // }
-      // else {
+      sleep(1);
       perror("\nunable to connect to dfs1");
       dfs1_status = false;
     }
@@ -154,10 +155,11 @@ int establish_connection () {
     {
       dfs1_status = true;
     }
-    //set_blocking(dfc1_sock);
+
 
     if (connect(dfc2_sock, (struct sockaddr *)&dfs2_add, sizeof(dfs2_add)) < 0 && errno != EISCONN)
     {
+      sleep(1);
       perror("\nunable to connect to dfs2");
       dfs2_status = false;
     }
@@ -169,6 +171,7 @@ int establish_connection () {
 
     if (connect(dfc3_sock, (struct sockaddr *)&dfs3_add, sizeof(dfs3_add)) < 0 && errno != EISCONN)
     {
+      sleep(1);
       perror("\nunable to connect to dfs3");
       dfs3_status = false;
     }
@@ -179,6 +182,7 @@ int establish_connection () {
 
     if (connect(dfc4_sock, (struct sockaddr *)&dfs4_add, sizeof(dfs4_add)) < 0 && errno != EISCONN)
     {
+      sleep(1);
       perror("\nunable to connect to dfs4");
       dfs4_status = false;
     }
@@ -187,7 +191,7 @@ int establish_connection () {
       dfs4_status = true;
     }
 
-  /*Exiting if no server connected*/
+  /*If no server connected*/
     if(!(dfs1_status || dfs2_status || dfs3_status || dfs4_status))
     {
       printf("All servers offline, try again later\n");
@@ -198,7 +202,7 @@ int establish_connection () {
 }
 
 
-
+// Function for Authorizing client on DFS
 int req_auth(char* request,char* file, char* folder)
 {
   int conn_status;
@@ -240,8 +244,6 @@ int req_auth(char* request,char* file, char* folder)
     }
   }
 
-
-
   if (dfs2_status == true) {
     send(dfc2_sock, out_buffer, strlen(out_buffer), 0);
     bzero(in_buffer, sizeof(in_buffer));
@@ -266,7 +268,6 @@ int req_auth(char* request,char* file, char* folder)
       }
     }
   }
-
 
   if (dfs3_status == true) {
     send(dfc3_sock, out_buffer, strlen(out_buffer), 0);
@@ -293,7 +294,6 @@ int req_auth(char* request,char* file, char* folder)
     }
   }
 
-
   if (dfs4_status == true) {
     send(dfc4_sock, out_buffer, strlen(out_buffer), 0);
     bzero(in_buffer, sizeof(in_buffer));
@@ -319,13 +319,13 @@ int req_auth(char* request,char* file, char* folder)
     }
   }
 
-
   if (dfs1_auth || dfs2_auth || dfs3_auth || dfs4_auth)
   {
     printf("Authentication Successful\n");
     fflush(stdout);
     return 0;
   }
+  // Exiting if User not Authenticated
   else
   {
     printf("Invalid Username/Password. Please try again.\n");
@@ -335,7 +335,7 @@ int req_auth(char* request,char* file, char* folder)
 
 }
 
-
+// Function for calculating md5sum
 int calculate_md5sum(FILE *file_ptr, char md5[])
 {
   int n;
@@ -359,12 +359,11 @@ int calculate_md5sum(FILE *file_ptr, char md5[])
     snprintf( &md5[n*2], 16*2, "%02x", (unsigned int)out[n]);
   }
   md5_int = (int)strtol(md5+28, NULL, 16);
-  //fclose(file_ptr);
   return md5_int;
 }
 
 
-
+// Function for putting file on server
 int put_file(char *filename)
 {
   int md5_tail = 0;
@@ -462,12 +461,14 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       for (size_t j = 0; j < num_iterations; j++) {
         read_bytes = fread(buffer, 1, BUFFSIZE, file_ptr);
+        xor_encrypt_data(buffer);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
       }
       read_bytes = fread(buffer, 1, final_iteration, file_ptr);
+      xor_encrypt_data(buffer);
       send(out_sock, buffer, read_bytes, 0);
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
@@ -485,12 +486,14 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       for (size_t j = 0; j < num_iterations; j++) {
         read_bytes = fread(buffer, 1, BUFFSIZE, file_ptr);
+        xor_encrypt_data(buffer);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
       }
       read_bytes = fread(buffer, 1, final_iteration, file_ptr);
+      xor_encrypt_data(buffer);
       send(out_sock, buffer, read_bytes, 0);
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
@@ -508,12 +511,14 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       for (size_t j = 0; j < num_iterations; j++) {
         read_bytes = fread(buffer,  1, BUFFSIZE, file_ptr);
+        xor_encrypt_data(buffer);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
       }
       read_bytes = fread(buffer, 1, final_iteration, file_ptr);
+      xor_encrypt_data(buffer);
       send(out_sock, buffer, read_bytes, 0);
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
@@ -531,12 +536,14 @@ int put_file(char *filename)
       bzero(buffer, sizeof(buffer));
       for (size_t j = 0; j < last_num_iterations; j++) {
         read_bytes = fread(buffer, 1, BUFFSIZE, file_ptr);
+        xor_encrypt_data(buffer);
         send(out_sock, buffer, read_bytes, 0);
         bzero(buffer, sizeof(buffer));
         recv(out_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
       }
       read_bytes = fread(buffer, 1, last_final_iteration, file_ptr);
+      xor_encrypt_data(buffer);
       send(out_sock, buffer, read_bytes, 0);
       bzero(buffer, sizeof(buffer));
       recv(out_sock, buffer, sizeof(buffer), 0);
@@ -552,8 +559,7 @@ int put_file(char *filename)
 }
 
 
-
-
+// Function for Listing files on DFS
 int dfs_list() {
   FILE *list_file;
   char *line = NULL;
@@ -631,6 +637,7 @@ int dfs_list() {
   system("sort -u -o list.txt list.txt");
   usleep(100000);
   list_file = fopen("list.txt", "r");
+
   if(getline(&line, &length, list_file) == -1)
   {
     strcat(list_final, "(Empty)");
@@ -639,6 +646,7 @@ int dfs_list() {
 
   strncpy(fname, (line+1), strlen(line)-4);
 
+// Detect Complete or Incomplete Files in list
   while ((getline(&line, &length, list_file))!=-1) {
     if (strstr(line, fname)) {
       part_count++;
@@ -675,7 +683,7 @@ int dfs_list() {
 
 
 
-//Advanced GET
+//Advanced GET Function
 int get_file(char* file_name) {
   FILE *file_ptr;
   char sys_command[100];
@@ -760,6 +768,7 @@ int get_file(char* file_name) {
   bzero(dfs3_list, sizeof(dfs3_list));
   bzero(dfs4_list, sizeof(dfs4_list));
 
+// Dynamically recognize which files are needed and they are available at which server
   if (dfs1_status == true) {
     send(dfc1_sock, "Send", 4, 0);
     recv(dfc1_sock, dfs1_list, sizeof(dfs1_list), 0);
@@ -777,6 +786,7 @@ int get_file(char* file_name) {
         recv(dfc1_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p1_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc1_sock, "ACK", 3, 0);
@@ -800,6 +810,7 @@ int get_file(char* file_name) {
         recv(dfc1_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p2_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc1_sock, "ACK", 3, 0);
@@ -822,6 +833,7 @@ int get_file(char* file_name) {
         recv(dfc1_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p3_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc1_sock, "ACK", 3, 0);
@@ -844,6 +856,7 @@ int get_file(char* file_name) {
         recv(dfc1_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p4_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc1_sock, "ACK", 3, 0);
@@ -878,6 +891,7 @@ int get_file(char* file_name) {
         recv(dfc2_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p1_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc2_sock, "ACK", 3, 0);
@@ -900,6 +914,7 @@ int get_file(char* file_name) {
         recv(dfc2_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p2_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc2_sock, "ACK", 3, 0);
@@ -922,6 +937,7 @@ int get_file(char* file_name) {
         recv(dfc2_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p3_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc2_sock, "ACK", 3, 0);
@@ -944,6 +960,7 @@ int get_file(char* file_name) {
         recv(dfc2_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p4_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc2_sock, "ACK", 3, 0);
@@ -975,6 +992,7 @@ int get_file(char* file_name) {
         recv(dfc3_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p1_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc3_sock, "ACK", 3, 0);
@@ -997,6 +1015,7 @@ int get_file(char* file_name) {
         recv(dfc3_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p2_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc3_sock, "ACK", 3, 0);
@@ -1019,6 +1038,7 @@ int get_file(char* file_name) {
         recv(dfc3_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p3_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc3_sock, "ACK", 3, 0);
@@ -1041,6 +1061,7 @@ int get_file(char* file_name) {
         recv(dfc3_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p4_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc3_sock, "ACK", 3, 0);
@@ -1073,6 +1094,7 @@ int get_file(char* file_name) {
         recv(dfc4_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p1_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc4_sock, "ACK", 3, 0);
@@ -1095,6 +1117,7 @@ int get_file(char* file_name) {
         recv(dfc4_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p2_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc4_sock, "ACK", 3, 0);
@@ -1117,6 +1140,7 @@ int get_file(char* file_name) {
         recv(dfc4_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p3_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc4_sock, "ACK", 3, 0);
@@ -1139,6 +1163,7 @@ int get_file(char* file_name) {
         recv(dfc4_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0)) > 0) {
+          xor_encrypt_data(buffer);
           fwrite(buffer, 1, recv_bytes, p4_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc4_sock, "ACK", 3, 0);
@@ -1158,7 +1183,7 @@ int get_file(char* file_name) {
 
   combine_parts:
   bzero(sys_command ,sizeof(sys_command));
-
+ // Check if all parts were acquired or not
   if (p1_exist && p2_exist && p3_exist && p4_exist) {
     printf("Combining Parts\n");
     sprintf(sys_command, "cat %s %s %s %s > %s", p1_name, p2_name, p3_name, p4_name, file_name);
@@ -1173,6 +1198,7 @@ int get_file(char* file_name) {
 }
 
 
+// Request server to create directory
 int make_dir(char* directory_name) {
   char buffer[40];
   bzero(buffer, sizeof(buffer));
@@ -1209,6 +1235,7 @@ int make_dir(char* directory_name) {
 
   return 0;
 }
+
 
 
 int main(int argc, char *argv[])
@@ -1275,8 +1302,8 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-
-  printf("\n\nDistributed File System\nUsage:\nPUT <filename>\nGET <filename>\nLIST\n\nEnter Command:");
+// Take input from User and scan for various parameters
+  printf("\n\nDistributed File System\nUsage:\nPUT <filename> <subfolder>\nGET <filename> <subfolder>\nLIST <subfolder>\nMKDIR <subfolder>\n\nEnter Command:");
   while (scanf("%30[^\n]%*c", buffer))
   {
     sscanf(buffer, "%s %*s %*s", request_type);
@@ -1338,6 +1365,7 @@ int main(int argc, char *argv[])
     bzero(subfolder, sizeof(subfolder));
     strcpy(file_name, "none");
     bzero(request_type, sizeof(request_type));
-    printf("\n\nDistributed File System\nUsage:\nPUT <filename>\nGET <filename>\nLIST\n\nEnter Command:");
+    printf("\n\nDistributed File System\nUsage:\nPUT <filename> <subfolder>\nGET <filename> <subfolder>\nLIST <subfolder>\nMKDIR <subfolder>\n\nEnter Command:");
   }
+  return 0;
 }
