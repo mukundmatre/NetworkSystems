@@ -21,10 +21,12 @@ Author: Mukund Madhusudan Atre*/
 #define BUFFSIZE 256
 
 int authenticate_user(char* username, char* password);
-int put_fparts(char* user, char* server_root, int comm_socket);
-int get_fparts(char* username, char* server_root, int conn_sock);
-int list_files(char* user_name, char* server_root, int comm_socket);
+int put_fparts (char* user, char* server_root, char* sub_folder, int comm_socket);
+int get_fparts(char* username, char* server_root, char* sub_folder, int conn_sock);
+int list_files(char* user_name, char* server_root, char* sub_folder, int comm_socket);
 int create_dir(char* username, char* server_root, int conn_sock);
+
+
 
 int authenticate_user(char* username, char* password)
 {
@@ -62,7 +64,8 @@ int authenticate_user(char* username, char* password)
 }
 
 
-int put_fparts (char* user, char* server_root, int comm_socket) {
+
+int put_fparts (char* user, char* server_root, char* sub_folder, int comm_socket) {
   FILE *file_ptr;
   FILE *file_ptr1;
   char file_name[20];
@@ -74,7 +77,12 @@ int put_fparts (char* user, char* server_root, int comm_socket) {
   int recv_bytes;
   char file_path[50];
   char dir_path[20];
-  sprintf(dir_path, ".%s/%s",server_root, user);
+  if (strcmp(sub_folder, "none")==0) {
+    sprintf(dir_path, ".%s/%s",server_root, user);
+  }
+  else {
+    sprintf(dir_path, ".%s/%s/%s",server_root, user, sub_folder);
+  }
   mkdir(dir_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
   recv_bytes = recv(comm_socket, in_buffer, sizeof(in_buffer), 0);
@@ -144,45 +152,73 @@ int put_fparts (char* user, char* server_root, int comm_socket) {
 }
 
 
-int list_files(char* user_name, char* server_root, int comm_socket) {
+
+int list_files(char* user_name, char* server_root, char* sub_folder, int comm_socket) {
   DIR *dir;
   struct dirent *ent;
   char buffer[10];
   char file_list[100];
   bzero(file_list, sizeof(file_list));
   char dir_path[20];
-  sprintf(dir_path, ".%s/%s",server_root, user_name);
+  if (strcmp(sub_folder, "none")==0) {
+    sprintf(dir_path, ".%s/%s",server_root, user_name);
+  }
+  else {
+    sprintf(dir_path, ".%s/%s/%s",server_root, user_name, sub_folder);
+  }
+
   if ((dir = opendir (dir_path)) != NULL) {
   /* print all the files and directories within directory */
-  while ((ent = readdir (dir)) != NULL) {
-    if ((strcmp(ent->d_name, ".") == 0) || (strcmp(ent->d_name, "..") == 0) ) {
-      continue;
+    while ((ent = readdir (dir)) != NULL) {
+      if ((strcmp(ent->d_name, ".") == 0) || (strcmp(ent->d_name, "..") == 0) ) {
+        continue;
+      }
+      if (ent->d_name[0] != '.') {
+        continue;
+      }
+      strcat(file_list, ent->d_name);
+      strcat(file_list, "\n");
     }
-    if (ent->d_name[0] != '.') {
-      continue;
+    if (strlen(file_list) == 0) {
+      closedir (dir);
+      bzero(buffer, sizeof(buffer));
+      recv(comm_socket, buffer, sizeof(buffer), 0);
+      if (strstr(buffer, "Done")) {
+        send(comm_socket, "ACK", 3, 0);
+        return 2;
+      }
+      send(comm_socket, "Empty", 5, 0);
+      bzero(buffer, sizeof(buffer));
+      return 0;
     }
-    strcat(file_list, ent->d_name);
-    strcat(file_list, "\n");
-  }
-  closedir (dir);
-  bzero(buffer, sizeof(buffer));
-  recv(comm_socket, buffer, sizeof(buffer), 0);
-  if (strstr(buffer, "Done")) {
-    send(comm_socket, "ACK", 3, 0);
-    return 2;
-  }
-  send(comm_socket, file_list, strlen(file_list), 0);
-  bzero(buffer, sizeof(buffer));
+    closedir (dir);
+    bzero(buffer, sizeof(buffer));
+    recv(comm_socket, buffer, sizeof(buffer), 0);
+    if (strstr(buffer, "Done")) {
+      send(comm_socket, "ACK", 3, 0);
+      return 2;
+    }
+    send(comm_socket, file_list, strlen(file_list), 0);
+    bzero(buffer, sizeof(buffer));
   } else {
   /* could not open directory */
-  perror ("");
-  return 1;
+    bzero(buffer, sizeof(buffer));
+    recv(comm_socket, buffer, sizeof(buffer), 0);
+    if (strstr(buffer, "Done")) {
+      send(comm_socket, "ACK", 3, 0);
+      return 2;
+    }
+    send(comm_socket, "NoExist", 7, 0);
+    bzero(buffer, sizeof(buffer));
+    perror ("");
+    return 1;
   }
   return 0;
 }
 
 
-int get_fparts(char* username, char* server_root, int conn_sock) {
+
+int get_fparts(char* username, char* server_root, char* sub_folder, int conn_sock) {
   FILE *file_ptr;
   char buffer[BUFFSIZE];
   char request[5];
@@ -192,7 +228,7 @@ int get_fparts(char* username, char* server_root, int conn_sock) {
   int iter = 0;
   int list_ret;
 
-  list_ret = list_files(username, server_root, conn_sock);
+  list_ret = list_files(username, server_root, sub_folder, conn_sock);
   if (list_ret == 2) {
     return 2;
   }
@@ -209,7 +245,12 @@ int get_fparts(char* username, char* server_root, int conn_sock) {
     }
     sscanf(buffer, "%s %s", request, file_name);
     printf("Filename:%s\n", file_name);
-    sprintf(file_path, ".%s/%s/%s", server_root, username, file_name);
+    if (strcmp(sub_folder, "none")==0) {
+      sprintf(file_path, ".%s/%s/%s", server_root, username, file_name);
+    }
+    else {
+      sprintf(file_path, ".%s/%s/%s/%s", server_root, username, sub_folder, file_name);
+    }
     file_ptr = fopen(file_path, "r");
     if (file_ptr == NULL) {
       printf("Cannot open file\n");
@@ -228,6 +269,8 @@ int get_fparts(char* username, char* server_root, int conn_sock) {
   return 0;
 }
 
+
+
 int create_dir(char* username, char* server_root, int conn_sock) {
   char buffer[40];
   char subfolder[20];
@@ -245,8 +288,6 @@ int create_dir(char* username, char* server_root, int conn_sock) {
 
 
 
-
-
 int main(int argc, char *argv[])
 {
   int pid;
@@ -259,6 +300,8 @@ int main(int argc, char *argv[])
   int dfs_sock, conn_sock;
   char username[40];
   char password[40];
+  char subfolder[40];
+  bzero(subfolder, sizeof(subfolder));
   char request_type[10];
   char filename[40];
   char port[10] = "5575";
@@ -303,7 +346,7 @@ int main(int argc, char *argv[])
       continue;
     }
 
-    printf("Request for Connection from Client at port:%d\n", ntohs(dfc_add.sin_port));
+    printf("\nRequest for Connection from Client at port:%d\n", ntohs(dfc_add.sin_port));
 
     pid = fork();
 
@@ -319,7 +362,7 @@ int main(int argc, char *argv[])
           exit(0);
         }
         printf("\n-----%s-----\n", buffer);
-        sscanf(buffer, "%s %s %s %s", request_type, filename, username, password);
+        sscanf(buffer, "%s %s %s %s %s", request_type, filename, subfolder, username, password);
         bzero(buffer, sizeof(buffer));
         printf("User:%s Pass:%s\n", username, password);
         auth = authenticate_user(username, password);
@@ -331,15 +374,15 @@ int main(int argc, char *argv[])
           send(conn_sock, buffer, strlen(buffer), 0);
           if (strcmp(request_type, "PUT") == 0) {
             printf("PUT detected\n");
-            put_fparts(username, server_root, conn_sock);
+            put_fparts(username, server_root, subfolder, conn_sock);
           }
           else if (strcmp(request_type, "GET") == 0) {
             printf("GET detected\n");
-            get_fparts(username, server_root, conn_sock);
+            get_fparts(username, server_root, subfolder, conn_sock);
           }
           else if (strcmp(request_type, "LIST") == 0) {
             printf("LIST detected\n");
-            list_files(username, server_root, conn_sock);
+            list_files(username, server_root, subfolder, conn_sock);
           }
           else if (strcmp(request_type, "MKDIR") == 0) {
             printf("MKDIR detected\n");
@@ -367,7 +410,6 @@ int main(int argc, char *argv[])
         }
       }
     }
-
 
     close(conn_sock);
   }

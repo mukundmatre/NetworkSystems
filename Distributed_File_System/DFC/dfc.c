@@ -41,6 +41,9 @@ dfc_t conf;
 int dfc1_sock, dfc2_sock, dfc3_sock, dfc4_sock;
 struct sockaddr_in dfs1_add, dfs2_add, dfs3_add, dfs4_add;
 bool dfs1_status, dfs2_status, dfs3_status, dfs4_status;
+bool dfs1_empty, dfs2_empty, dfs3_empty, dfs4_empty;
+struct timeval tv;
+fd_set myset;
 
 int filesys_map [NUM_MODULUS] [NUM_SERVERS] [NUM_FPART] = {
                                                            {{1,2},{2,3},{3,4},{4,1}}
@@ -51,12 +54,15 @@ int filesys_map [NUM_MODULUS] [NUM_SERVERS] [NUM_FPART] = {
 
 
 int parse_dfc_conf(char* conf_name);
-int req_auth(char* request, char* file);
+int req_auth(char* request, char* file, char* folder);
+int establish_connection ();
 int calculate_md5sum(FILE *file_ptr, char *md5_string);
 int put_file(char *file);
 int dfs_list();
 int get_file(char* file_name);
 int make_dir(char* directory_name);
+void set_non_blocking(int socket);
+void set_blocking(int socket);
 
 int parse_dfc_conf(char* conf_name)
 {
@@ -103,12 +109,44 @@ int parse_dfc_conf(char* conf_name)
   }
 }
 
+void set_non_blocking(int socket) {
+  long arg;
+  arg = fcntl(socket, F_GETFL, NULL);
+  arg |= O_NONBLOCK;
+  fcntl(socket, F_SETFL, arg);
+}
+
+void set_blocking(int socket) {
+  long arg;
+  arg = fcntl(socket, F_GETFL, NULL);
+  arg &= (~O_NONBLOCK);
+  fcntl(socket, F_SETFL, arg);
+}
+
 int establish_connection () {
+  // socklen_t lon;
+  // int valopt;
   /*Establish connection to servers*/
     printf("Connecting to servers...\n");
-
+    //set_non_blocking(dfc1_sock);
     if (connect(dfc1_sock, (struct sockaddr *)&dfs1_add, sizeof(dfs1_add)) < 0 && errno!=EISCONN)
     {
+      // if (errno != EINPROGRESS) {
+      //   printf("I was here\n");
+        // tv.tv_sec = 15;
+        // tv.tv_usec = 0;
+        // FD_ZERO(&myset);
+        // FD_SET(dfc1_sock, &myset);
+        // if (select(dfc1_sock+1, NULL, &myset, NULL, &tv) > 0) {
+        //   perror("\n");
+        //   dfs1_status = false;
+        // }
+      //   else {
+      //     perror("\nunable to connect to dfs1");
+      //     dfs1_status = false;
+      //   }
+      // }
+      // else {
       perror("\nunable to connect to dfs1");
       dfs1_status = false;
     }
@@ -116,6 +154,7 @@ int establish_connection () {
     {
       dfs1_status = true;
     }
+    //set_blocking(dfc1_sock);
 
     if (connect(dfc2_sock, (struct sockaddr *)&dfs2_add, sizeof(dfs2_add)) < 0 && errno != EISCONN)
     {
@@ -160,7 +199,7 @@ int establish_connection () {
 
 
 
-int req_auth(char* request,char* file)
+int req_auth(char* request,char* file, char* folder)
 {
   int conn_status;
   if ((conn_status = establish_connection()) == 1) {
@@ -173,7 +212,7 @@ int req_auth(char* request,char* file)
   bool dfs1_auth = false, dfs2_auth = false, dfs3_auth = false, dfs4_auth = false;
 
   bzero(out_buffer, sizeof(out_buffer));
-  sprintf(out_buffer, "%s %s %s %s", request, file, conf.username, conf.password);
+  sprintf(out_buffer, "%s %s %s %s %s", request, file, folder, conf.username, conf.password);
   printf("%s\n", out_buffer);
 
   if (dfs1_status == true) {
@@ -289,7 +328,7 @@ int req_auth(char* request,char* file)
   }
   else
   {
-    printf("Invalid Username/Password. Please try again.");
+    printf("Invalid Username/Password. Please try again.\n");
     fflush(stdout);
     exit(1);
   }
@@ -512,6 +551,9 @@ int put_file(char *filename)
   return 0;
 }
 
+
+
+
 int dfs_list() {
   FILE *list_file;
   char *line = NULL;
@@ -527,37 +569,76 @@ int dfs_list() {
   if (dfs1_status == true) {
     send(dfc1_sock, "Send", 4, 0);
     recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0);
-    fwrite(buffer, 1, recv_bytes, list_file);
-    bzero(buffer, sizeof(buffer));
+    if (strstr(buffer, "NoExist")) {
+      printf("Directory does not exist at dfs1\n");
+    }
+    else if (strstr(buffer, "Empty")) {
+      printf("Directory empty at dfs1\n");
+    }
+    else {
+      fwrite(buffer, 1, recv_bytes, list_file);
+      bzero(buffer, sizeof(buffer));
+    }
   }
 
   if (dfs2_status == true) {
     send(dfc2_sock, "Send", 4, 0);
     recv_bytes = recv(dfc2_sock, buffer, sizeof(buffer), 0);
-    fwrite(buffer, 1, recv_bytes, list_file);
-    bzero(buffer, sizeof(buffer));
+    if (strstr(buffer, "NoExist")) {
+      printf("Directory does not exist at dfs2\n");
+    }
+    else if (strstr(buffer, "Empty")) {
+      printf("Directory empty at dfs2\n");
+    }
+    else {
+      fwrite(buffer, 1, recv_bytes, list_file);
+      bzero(buffer, sizeof(buffer));
+    }
   }
 
   if (dfs3_status == true) {
     send(dfc3_sock, "Send", 4, 0);
     recv_bytes = recv(dfc3_sock, buffer, sizeof(buffer), 0);
-    fwrite(buffer, 1, recv_bytes, list_file);
-    bzero(buffer, sizeof(buffer));
+    if (strstr(buffer, "NoExist")) {
+      printf("Directory does not exist at dfs3\n");
+    }
+    else if (strstr(buffer, "Empty")) {
+      printf("Directory empty at dfs3\n");
+    }
+    else {
+      fwrite(buffer, 1, recv_bytes, list_file);
+      bzero(buffer, sizeof(buffer));
+    }
   }
 
   if (dfs4_status == true) {
     send(dfc4_sock, "Send", 4, 0);
     recv_bytes = recv(dfc4_sock, buffer, sizeof(buffer), 0);
-    fwrite(buffer, 1, recv_bytes, list_file);
-    bzero(buffer, sizeof(buffer));
+    if (strstr(buffer, "NoExist")) {
+      printf("Directory does not exist at dfs4\n");
+    }
+    else if (strstr(buffer, "Empty")) {
+      printf("Directory empty at dfs4\n");
+    }
+    else {
+      fwrite(buffer, 1, recv_bytes, list_file);
+      bzero(buffer, sizeof(buffer));
+    }
   }
+
   fclose(list_file);
   usleep(100000);
   system("sort -u -o list.txt list.txt");
   usleep(100000);
   list_file = fopen("list.txt", "r");
-  getline(&line, &length, list_file);
+  if(getline(&line, &length, list_file) == -1)
+  {
+    strcat(list_final, "(Empty)");
+    goto result;
+  }
+
   strncpy(fname, (line+1), strlen(line)-4);
+
   while ((getline(&line, &length, list_file))!=-1) {
     if (strstr(line, fname)) {
       part_count++;
@@ -584,6 +665,7 @@ int dfs_list() {
     strcat(list_final, fname);
     strcat(list_final, "[Incomplete]\n");
   }
+  result:
   fclose(list_file);
   printf("list_final:\n%s \n", list_final);
   fflush(stdout);
@@ -695,7 +777,6 @@ int get_file(char* file_name) {
         recv(dfc1_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
-          printf("Buffer:%s\n", buffer);
           fwrite(buffer, 1, recv_bytes, p1_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc1_sock, "ACK", 3, 0);
@@ -719,7 +800,6 @@ int get_file(char* file_name) {
         recv(dfc1_sock, buffer, sizeof(buffer), 0);
         bzero(buffer, sizeof(buffer));
         while((recv_bytes = recv(dfc1_sock, buffer, sizeof(buffer), 0)) > 0) {
-          printf("Buffer:%s\n", buffer);
           fwrite(buffer, 1, recv_bytes, p2_ptr);
           bzero(buffer, sizeof(buffer));
           send(dfc1_sock, "ACK", 3, 0);
@@ -1137,8 +1217,8 @@ int main(int argc, char *argv[])
   int auth;
   char buffer[BUFFSIZE];
   char request_type[5];
-  char file_name[40] = "all";
-  char subfolder[40] = "";
+  char file_name[40] = "none";
+  char subfolder[40] = "none";
 
   if (argc!=2)
   {
@@ -1199,43 +1279,64 @@ int main(int argc, char *argv[])
   printf("\n\nDistributed File System\nUsage:\nPUT <filename>\nGET <filename>\nLIST\n\nEnter Command:");
   while (scanf("%30[^\n]%*c", buffer))
   {
-    sscanf(buffer, "%s %*s", request_type);
-    auth = req_auth(request_type, file_name);
-    if (auth == 0)
-    {
-      if ((strcmp(request_type, "PUT") == 0)) {
-        sscanf(buffer, "%*s %s", file_name);
+    sscanf(buffer, "%s %*s %*s", request_type);
+
+    if ((strcmp(request_type, "PUT") == 0)) {
+      sscanf(buffer, "%*s %s %s", file_name, subfolder);
+      if (strlen(subfolder)==0) {
+        strcpy(subfolder, "none");
+      }
+      auth = req_auth(request_type, file_name, subfolder);
+      if (auth == 0)
+      {
         printf("File :%s\n", file_name);
         put_file(file_name);
       }
+    }
 
-      else if (strcmp(request_type, "GET") == 0) {
-        sscanf(buffer, "%*s %s", file_name);
+    else if (strcmp(request_type, "GET") == 0) {
+      sscanf(buffer, "%*s %s %s", file_name, subfolder);
+      if (strlen(subfolder)==0) {
+        strcpy(subfolder, "none");
+      }
+      auth = req_auth(request_type, file_name, subfolder);
+      if (auth == 0)
+      {
         printf("GET command\n");
         get_file(file_name);
       }
+    }
 
-      else if (strcmp(request_type, "LIST") == 0) {
+    else if (strcmp(request_type, "LIST") == 0) {
+      sscanf(buffer, "%*s %s", subfolder);
+      if(strlen(subfolder)==0) {
+        strcpy(subfolder, "none");
+      }
+      auth = req_auth(request_type, file_name, subfolder);
+      if (auth == 0)
+      {
         printf("Listing files on servers\n");
         dfs_list();
       }
-      else if (strcmp(request_type, "MKDIR") == 0) {
-        sscanf(buffer, "%*s %s", subfolder);
+    }
+    else if (strcmp(request_type, "MKDIR") == 0) {
+      sscanf(buffer, "%*s %s", subfolder);
+      auth = req_auth(request_type, file_name, subfolder);
+      if (auth == 0)
+      {
         printf("Creating directory\n");
         make_dir(subfolder);
       }
-
-      else {
-        printf("Invalid command, refer to Usage\n");
-      }
     }
+
     else {
-      continue;
+      printf("Invalid command, refer to Usage\n");
     }
 
     bzero(buffer, sizeof(buffer));
     bzero(file_name, sizeof(file_name));
-    strcpy(file_name, "all");
+    bzero(subfolder, sizeof(subfolder));
+    strcpy(file_name, "none");
     bzero(request_type, sizeof(request_type));
     printf("\n\nDistributed File System\nUsage:\nPUT <filename>\nGET <filename>\nLIST\n\nEnter Command:");
   }
