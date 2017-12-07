@@ -4,7 +4,7 @@ CC=gcc
 
 CDEFS=
 CFLAGS= -O0 -g $(INCLUDE_DIRS) $(CDEFS)
-LIBS= -lssl -lcrypto
+LIBS= -lssl -lcrypto -lpthread
 
 HFILES=
 CFILES= webproxy.c
