@@ -23,6 +23,7 @@ Web Proxy server using C
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <openssl/md5.h>
+#include <time.h>
 
 
 #define BUFFSIZE 10240
@@ -32,6 +33,8 @@ Web Proxy server using C
 #define BR_MESSAGE_U "<html><body>400 Bad Request Reason: Invalid URL: <<requested url>></body></html>\r\n\r\n"
 #define CACHE_DIR "./cache/"
 #define HOST_CACHE_PATH "./cache/hostname_cache.txt"
+
+long int cache_timeout;
 
 void calculate_md5sum(char* url, char* md5string);
 int send_cached_file(char* url, int client_sock);
@@ -55,9 +58,12 @@ int send_cached_file(char* url, int client_sock) {
   int read_bytes;
   char buffer[BUFFSIZE];
   char md5string[33];
+  char *line = NULL;
+  size_t length;
   calculate_md5sum(url, md5string);
   sprintf(file_path,"%s%s", CACHE_DIR, md5string);
   file_ptr = fopen(file_path, "r");
+  getline(&line, &length, file_ptr);
   while((read_bytes = fread(buffer, 1, sizeof(buffer), file_ptr))) {
     send(client_sock, buffer, read_bytes, 0);
     bzero(buffer, sizeof(buffer));
@@ -71,6 +77,12 @@ int check_file_cache(char* url) {
   FILE *file_ptr;
   char md5string[33];
   char file_path[50];
+  time_t now;
+  time_t start;
+  time_t diff;
+  char *line = NULL;
+  size_t length;
+  now = time(NULL);
   calculate_md5sum(url, md5string);
   sprintf(file_path,"%s%s", CACHE_DIR, md5string);
   file_ptr = fopen(file_path, "r");
@@ -78,6 +90,14 @@ int check_file_cache(char* url) {
     return 1;
   }
   else {
+    getline(&line, &length, file_ptr);
+    sscanf(line, "%ld", &start);
+    diff = (now - start);
+    if (diff>cache_timeout) {
+      fclose(file_ptr);
+      remove(file_path);
+      return 1;
+    }
     fclose(file_ptr);
     return 0;
   }
@@ -119,6 +139,7 @@ int check_host_cache(char *hostname, char* ip_string) {
 int main(int argc, char *argv[])
 {
   FILE *file_ptr;
+  time_t start;
   char proxy_port[10] = "10001";
   struct sockaddr_in proxy_add;
   struct sockaddr_in client_add;
@@ -138,14 +159,15 @@ int main(int argc, char *argv[])
   char md5string[33];
   char file_path[50];
 
-  if(argc!=2)
+  if(argc!=3)
   {
-    printf("usage: %s [Port]\n",argv[0]);
+    printf("usage: %s [Port] [Cache Timeout]\n",argv[0]);
     exit(1);
   }
   else
   {
     strcpy(proxy_port, argv[1]);
+    cache_timeout = atol(argv[2]);
   }
 
   /* build address data structure */
@@ -208,7 +230,6 @@ int main(int argc, char *argv[])
             bzero(ptoc_buffer, sizeof(ptoc_buffer));
             continue;
           }
-
           if (check_file_cache(url) == 0) {
             printf("File found in cache\n");
             send_cached_file(url, conn_sock);
@@ -251,8 +272,11 @@ int main(int argc, char *argv[])
             // Send the request obtained from client to the server
             send(server_sock, ctop_buffer, strlen(ctop_buffer), 0);
 
+            // Receive response from server and Write file to cache with timestamp
+            // Send it to the client at the same time
             file_ptr = fopen(file_path, "a");
-            // Receive response from server and send it to the client
+            start = time(NULL);
+            fprintf(file_ptr, "%lu\n", start);
             while((recv_bytes = recv(server_sock, stop_buffer, sizeof(stop_buffer), 0))) {
               printf("Recv bytes: %d\n", recv_bytes);
               fwrite(stop_buffer, 1, recv_bytes, file_ptr);
