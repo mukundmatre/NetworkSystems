@@ -80,3 +80,4 @@ use.typekit.net,104.86.99.125
 ajax.googleapis.com,172.217.2.10
 www.shpa.com,50.63.124.1
 fonts.gstatic.com,172.217.12.3
+10.0.0.1,10.0.0.1

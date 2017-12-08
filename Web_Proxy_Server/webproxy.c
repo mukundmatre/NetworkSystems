@@ -29,19 +29,22 @@ Web Proxy server using C
 #define BUFFSIZE 10240
 #define MAX_PENDING 100
 #define RSP_400BR "HTTP/1.1 400 Bad Request\r\nContent-Type:text/html\r\n\r\n"
-#define BR_MESSAGE_M "<html><body>400 Bad Request Reason: Invalid Method :<<request method>></body></html>\r\n\r\n"
+#define RSP_403FORB "HTTP/1.1 403 Forbidden\r\nContent-Type:text/html\r\n"
+#define FORB_MESSAGE "<html><body>403 Blocked Website</body></html>\r\n\r\n"
+#define BR_MESSAGE_M "<html><body>400 Bad Request Reason: Invalid Method:<<request method>></body></html>\r\n\r\n"
 #define BR_MESSAGE_U "<html><body>400 Bad Request Reason: Invalid URL: <<requested url>></body></html>\r\n\r\n"
 #define CACHE_DIR "./cache/"
 #define HOST_CACHE_PATH "./cache/hostname_cache.txt"
+#define BLOCK_LIST_PATH "./cache/block_list.txt"
 
 long int cache_timeout;
 
 void calculate_md5sum(char* url, char* md5string);
+int check_if_blocked(char* host_ip);
 int send_cached_file(char* url, int client_sock);
 int check_file_cache(char* url);
 int cache_host_ip(char* hostname, char* ip_string);
 int check_host_cache(char *hostname, char* ip_string);
-
 
 void calculate_md5sum(char* url, char* md5string) {
   unsigned char url_md5[16];
@@ -49,6 +52,20 @@ void calculate_md5sum(char* url, char* md5string) {
   for(int i = 0; i < 16; ++i) {
     sprintf(&md5string[i*2], "%02x", (unsigned int)url_md5[i]);
   }
+}
+
+
+int check_if_blocked(char* host_ip) {
+  FILE *block_list_ptr;
+  block_list_ptr = fopen(BLOCK_LIST_PATH, "r");
+  char *line = NULL;
+  size_t length;
+  while((getline(&line, &length, block_list_ptr))!=-1) {
+    if (strstr(line, host_ip)) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 
@@ -112,6 +129,7 @@ int cache_host_ip(char* hostname, char* ip_string) {
   return 0;
 }
 
+
 // Function to check hostname in cache for IP
 int check_host_cache(char *hostname, char* ip_string) {
   strcpy(ip_string, "none");
@@ -133,7 +151,6 @@ int check_host_cache(char *hostname, char* ip_string) {
     return 0;
   }
 }
-
 
 
 int main(int argc, char *argv[])
@@ -158,6 +175,8 @@ int main(int argc, char *argv[])
   int pid;
   char md5string[33];
   char file_path[50];
+  char url_ip[20];
+  char url_port[10];
 
   if(argc!=3)
   {
@@ -218,6 +237,7 @@ int main(int argc, char *argv[])
           break;
         }
         sscanf(ctop_buffer, "%s %s %s", request_type, url, http_version);
+
         // Filter GET requests
         if (strcmp(request_type, "GET") == 0) {
 
@@ -230,6 +250,8 @@ int main(int argc, char *argv[])
             bzero(ptoc_buffer, sizeof(ptoc_buffer));
             continue;
           }
+
+
           if (check_file_cache(url) == 0) {
             printf("File found in cache\n");
             send_cached_file(url, conn_sock);
@@ -240,21 +262,46 @@ int main(int argc, char *argv[])
             printf("File NOT found in cache\n");
             sscanf(url, "%*[^/]%*c%*c%[^/]", host_name);
             printf("\nHostname:***%s***\n", host_name);
-
-            if (check_host_cache(host_name, ip_string) == 0) {
-              server_add.sin_addr.s_addr = inet_addr(ip_string);
-            }
-            else {
-              // Get IP from host name
-              hp = gethostbyname(host_name);
-              if (hp == NULL) {
-                perror("\nHost unknown");
+            if (strchr(host_name, ':')) {
+              sscanf(host_name, "%[^:]%*c%[^/]", url_ip, url_port);
+              if (check_if_blocked(url_ip) == 1) {
+                bzero(ptoc_buffer, sizeof(ptoc_buffer));
+                strcpy(ptoc_buffer, RSP_403FORB);
+                send(conn_sock, ptoc_buffer, strlen(ptoc_buffer), 0);
+                bzero(ptoc_buffer, sizeof(ptoc_buffer));
+                strcpy(ptoc_buffer, FORB_MESSAGE);
+                send(conn_sock, ptoc_buffer, strlen(ptoc_buffer), 0);
                 continue;
               }
-              // Copy the IP address obtained from gethostbyname() into address structure
-              bcopy(hp->h_addr, (char *)&server_add.sin_addr, hp->h_length);
-              cache_host_ip(host_name, inet_ntoa(server_add.sin_addr));
+              server_add.sin_addr.s_addr = inet_addr(url_ip);
+              server_add.sin_port = htons(atoi(url_port));
             }
+            else {
+              if (check_if_blocked(host_name) == 1) {
+                bzero(ptoc_buffer, sizeof(ptoc_buffer));
+                strcpy(ptoc_buffer, RSP_403FORB);
+                send(conn_sock, ptoc_buffer, strlen(ptoc_buffer), 0);
+                bzero(ptoc_buffer, sizeof(ptoc_buffer));
+                strcpy(ptoc_buffer, FORB_MESSAGE);
+                send(conn_sock, ptoc_buffer, strlen(ptoc_buffer), 0);
+                continue;
+              }
+              if (check_host_cache(host_name, ip_string) == 0) {
+                server_add.sin_addr.s_addr = inet_addr(ip_string);
+              }
+              else {
+                // Get IP from host name
+                hp = gethostbyname(host_name);
+                if (hp == NULL) {
+                  perror("\nHost unknown");
+                  continue;
+                }
+                // Copy the IP address obtained from gethostbyname() into address structure
+                bcopy(hp->h_addr, (char *)&server_add.sin_addr, hp->h_length);
+                cache_host_ip(host_name, inet_ntoa(server_add.sin_addr));
+              }
+            }
+
 
             /*Creating socket for communication to server*/
             if ((server_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
