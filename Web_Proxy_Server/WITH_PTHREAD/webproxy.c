@@ -35,13 +35,13 @@ Web Proxy server using C
 #define BR_MESSAGE_M "<html><body>400 Bad Request Reason: Invalid Method:<<request method>></body></html>\r\n\r\n"
 #define BR_MESSAGE_U "<html><body>400 Bad Request Reason: Invalid URL: <<requested url>></body></html>\r\n\r\n"
 #define CACHE_DIR "./cache/"
-#define HOST_CACHE_PATH "./cache/hostname_cache.txt"
-#define BLOCK_LIST_PATH "./cache/block_list.txt"
+#define HOST_CACHE_PATH "hostname_cache.txt"
+#define BLOCK_LIST_PATH "block_list.txt"
 
 typedef struct {
   char file_path[50];
   char hostname[100];
-  int socket;
+  char ip_as_str[20];
 }Args_t;
 
 long int cache_timeout;
@@ -169,13 +169,16 @@ int check_host_cache(char *hostname, char* ip_string) {
 
 void *LinkPrefetcher(void* args_struct) {
   Args_t arg_data = *(Args_t *)args_struct;
-  int server_sock = arg_data.socket;
+  int server_sock;
   char file_path[50];
   bzero(file_path, sizeof(file_path));
   strcpy(file_path, arg_data.file_path);
   char host_name[100];
   bzero(host_name, sizeof(host_name));
   strcpy(host_name, arg_data.hostname);
+  char ip_string[20];
+  bzero(ip_string, sizeof(ip_string));
+  strcpy(ip_string, arg_data.ip_as_str);
   char cache_path[50];
   char request[BUFFSIZE];
   char ptof_buffer[BUFFSIZE];
@@ -185,41 +188,63 @@ void *LinkPrefetcher(void* args_struct) {
   time_t start;
   char url[100];
   char short_link[100];
-  char *link_start;
+  char *link_start = NULL;
+  char *href_start = NULL;
   char *line = NULL;
   size_t length;
   int recv_bytes;
   size_t file_size = 0;
+  struct sockaddr_in server_add;
+
+  bzero((char *)&server_add, sizeof(server_add));
+  server_add.sin_family = AF_INET;
+  server_add.sin_port = htons(atoi("80"));
+  server_add.sin_addr.s_addr = inet_addr(ip_string);
+
 
   html_ptr = fopen(file_path, "r");
   if (html_ptr==NULL) {
     pthread_exit(NULL);
   }
+
   while((getline(&line, &length, html_ptr))!=-1) {
+    link_start = NULL;
+    href_start = NULL;
     bzero(url, sizeof(url));
     bzero(cache_path, sizeof(cache_path));
     bzero(short_link, sizeof(short_link));
     bzero(md5string, sizeof(md5string));
     bzero(request, sizeof(request));
     bzero(ptof_buffer, sizeof(ptof_buffer));
-    if (strstr(line, "href")) {
+    if ((href_start = strstr(line, "href"))) {
+      if ((server_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("\nserver_sock creation error");
+        pthread_exit(NULL);
+      }
+
+      if (connect(server_sock, (struct sockaddr *)&server_add, sizeof(server_add)) < 0 && errno!=EISCONN)
+      {
+        perror("\nunable to connect to host");
+        pthread_exit(NULL);
+      }
+
       if((link_start = strstr(line, "http://"))) {
         sscanf(link_start, "%[^\"]", url);
-        sprintf(request, "GET %s HTTP/1.0", url);
       }
       else {
-        sscanf(line, "%*[^=]%*c%*c%[^\"]", short_link);
-        if ((short_link[0]) == '/') {
+        sscanf(href_start, "%*[^=]%*c%*c%[^\"]", short_link);
+        if (short_link[0] == '/') {
           sprintf(url, "http://%s%s", host_name, short_link);
         }
         else {
           sprintf(url, "http://%s/%s", host_name, short_link);
         }
-        sprintf(request, "GET %s HTTP/1.0", url);
       }
+      sprintf(request, "GET %s HTTP/1.0\r\n\r\n", url);
       calculate_md5sum(url, md5string);
       sprintf(cache_path, "%s%s", CACHE_DIR, md5string);
       send(server_sock, request, strlen(request), MSG_NOSIGNAL);
+      printf("Cache Path:%s\n", cache_path);
       cache_ptr = fopen(cache_path, "a");
       start = time(NULL);
       fprintf(cache_ptr, "%lu\n", start);
@@ -233,6 +258,10 @@ void *LinkPrefetcher(void* args_struct) {
         remove(cache_path);
       }
       printf("Prefetched link:%s\n", url);
+      close(server_sock);
+    }
+    else {
+      continue;
     }
   }
   fclose(html_ptr);
@@ -409,9 +438,9 @@ void *Handler(void* socket_desc) {
         }
 
         if (prefetch_flag == true) {
-          args.socket = server_sock;
           strcpy(args.file_path, file_path);
           strcpy(args.hostname, host_name);
+          strcpy(args.ip_as_str, inet_ntoa(server_add.sin_addr));
           if(pthread_create(&prefetch_thread, &prefetch_attr, &LinkPrefetcher,(void *) &args) != 0)
           {
             perror("\n\t\t\t+++++++++++++Thread Creation Failed: ");
@@ -444,7 +473,6 @@ int main(int argc, char *argv[])
   char proxy_port[10] = "10001";
   struct sockaddr_in proxy_add;
   struct sockaddr_in client_add;
-  struct sockaddr_in server_add;
   unsigned int client_add_len;
   int proxy_sock, conn_sock;
   int *sock;
@@ -480,11 +508,6 @@ int main(int argc, char *argv[])
   proxy_add.sin_family = AF_INET;
   proxy_add.sin_addr.s_addr = INADDR_ANY;
   proxy_add.sin_port = htons(atoi(proxy_port));
-
-  /* build address data structure for server */
-  bzero((char *)&server_add, sizeof(server_add));
-  server_add.sin_family = AF_INET;
-  server_add.sin_port = htons(atoi("80"));
 
 /* setup passive open */
   if ((proxy_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {

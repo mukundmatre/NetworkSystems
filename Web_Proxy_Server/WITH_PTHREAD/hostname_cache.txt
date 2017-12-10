@@ -36,3 +36,4 @@ cdn.cnn.com,23.216.84.94
 www.i.cdn.cnn.com,151.101.181.67
 www.i.cdn.cnn.com,151.101.181.67
 spoofer.caida.org,192.172.226.159
+www.googletagservices.com,172.217.1.194
