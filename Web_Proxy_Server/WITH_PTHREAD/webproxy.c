@@ -245,7 +245,7 @@ void *LinkPrefetcher(void* args_struct) {
       sprintf(cache_path, "%s%s", CACHE_DIR, md5string);
       send(server_sock, request, strlen(request), MSG_NOSIGNAL);
       printf("Cache Path:%s\n", cache_path);
-      cache_ptr = fopen(cache_path, "a");
+      cache_ptr = fopen(cache_path, "w");
       start = time(NULL);
       fprintf(cache_ptr, "%lu\n", start);
       while((recv_bytes = recv(server_sock, ptof_buffer, sizeof(ptof_buffer), 0))) {
@@ -419,7 +419,7 @@ void *Handler(void* socket_desc) {
 
         // Receive response from server and Write file to cache with timestamp
         // Send it to the client at the same time
-        file_ptr = fopen(file_path, "a");
+        file_ptr = fopen(file_path, "w");
         start = time(NULL);
         fprintf(file_ptr, "%lu\n", start);
         while((recv_bytes = recv(server_sock, stop_buffer, sizeof(stop_buffer), 0))) {
